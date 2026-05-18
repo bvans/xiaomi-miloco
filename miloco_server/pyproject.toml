@@ -63,3 +63,9 @@ include = '\.pyi?$'
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
+
+
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

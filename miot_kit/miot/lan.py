@@ -345,7 +345,8 @@ class MIoTLan:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             # Set SO_BINDTODEVICE
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, if_name.encode())
+            if hasattr(socket, "SO_BINDTODEVICE"):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, if_name.encode())
             sock.bind(("", self._local_port or 0))
             self._internal_loop.add_reader(sock.fileno(), self.__socket_read_handler, (if_name, sock))
             self._broadcast_socks[if_name] = sock

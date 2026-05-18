@@ -93,7 +93,8 @@ class LocalModels:
         """Fetch model list from ai_engine via HTTP request synchronously."""
         models_url = self._get_service_url(LocalModelApi.MODELS_DESCRIPTION)
 
-        json_resp = await self._forward_local_models_services(models_url, method_get=True)
+        # Use a short timeout of 2.0s since we just want to quickly check if the engine is up
+        json_resp = await self._forward_local_models_services(models_url, method_get=True, timeout=2.0)
         data = json_resp["data"]
         models = []
         if data:

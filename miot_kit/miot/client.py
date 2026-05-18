@@ -188,11 +188,15 @@ class MIoTClient:
         await self._lan_client.init_async()
         await self._lan_client.register_status_changed_async(
             key="miot_client", handler=self.__on_lan_device_status_changed)
-        self._camera_client = MIoTCamera(
-            cloud_server=self._cloud_server,
-            access_token=self._oauth_info.access_token if self._oauth_info else "",
-            loop=self._main_loop)
-        await self._camera_client.init_async()
+        try:
+            self._camera_client = MIoTCamera(
+                cloud_server=self._cloud_server,
+                access_token=self._oauth_info.access_token if self._oauth_info else "",
+                loop=self._main_loop)
+            await self._camera_client.init_async()
+        except Exception as err:
+            _LOGGER.error("init camera client error: %s", err)
+            self._camera_client = None
         self._init_done = True
 
     async def deinit_async(self) -> None:
@@ -202,7 +206,8 @@ class MIoTClient:
             return
         await self._oauth_client.deinit_async()
         await self._http_client.deinit_async()
-        await self._camera_client.deinit_async()
+        if self._camera_client:
+            await self._camera_client.deinit_async()
         await self._lan_client.unregister_status_changed_async("miot_client")
         await self._lan_client.deinit_async()
         await self._network_client.deinit_async()
@@ -238,8 +243,9 @@ class MIoTClient:
         self._oauth_info = await self._oauth_client.get_access_token_async(code=code)
         self._http_client.update_http_header(
             access_token=self._oauth_info.access_token)
-        await self._camera_client.update_access_token_async(
-            access_token=self._oauth_info.access_token)
+        if self._camera_client:
+            await self._camera_client.update_access_token_async(
+                access_token=self._oauth_info.access_token)
         await self.get_user_info_async()
         return self._oauth_info
 
@@ -260,7 +266,8 @@ class MIoTClient:
             self._oauth_info = oauth_info
             await self.get_user_info_async()
         self._http_client.update_http_header(access_token=self._oauth_info.access_token)
-        await self._camera_client.update_access_token_async(access_token=self._oauth_info.access_token)
+        if self._camera_client:
+            await self._camera_client.update_access_token_async(access_token=self._oauth_info.access_token)
         return self._oauth_info
 
     async def check_token_async(self) -> bool:
@@ -413,7 +420,7 @@ class MIoTClient:
         self._cameras_buffer = cameras
         for did, camera_info in self._cameras_buffer.items():
             # Camera connect status
-            if did in self._camera_client.camera_map:
+            if self._camera_client and did in self._camera_client.camera_map:
                 camera_info.camera_status = await self._camera_client.get_camera_status_async(did)
             else:
                 camera_info.camera_status = MIoTCameraStatus.DISCONNECTED
@@ -443,6 +450,8 @@ class MIoTClient:
         Returns:
             MIoTCameraInstance: MIoT camera instance.
         """
+        if not self._camera_client:
+            raise RuntimeError("camera client not initialized")
         return await self._camera_client.create_camera_async(
             camera_info=camera_info,
             frame_interval=frame_interval,
@@ -458,6 +467,8 @@ class MIoTClient:
         Returns:
             Optional[MIoTCameraInstance]: MIoT camera instance.
         """
+        if not self._camera_client:
+            return None
         return await self._camera_client.get_camera_instance_async(did)
 
     async def register_lan_device_changed_async(
@@ -499,6 +510,8 @@ class MIoTClient:
         Returns:
             bool: Register result.
         """
+        if not self._camera_client:
+            return -1
         return await self._camera_client.register_status_changed_async(did=did, callback=callback)
 
     async def unregister_camera_status_changed_async(self, did: str) -> None:
@@ -510,6 +523,8 @@ class MIoTClient:
         Returns:
             bool: Unregister result.
         """
+        if not self._camera_client:
+            return
         return await self._camera_client.unregister_status_changed_async(did=did)
 
     async def send_app_notify_async(self, notify_id: str) -> bool:

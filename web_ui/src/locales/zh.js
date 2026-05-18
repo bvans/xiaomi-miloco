@@ -72,6 +72,17 @@ export default {
       toolExecutionParams: '工具执行参数:',
       toolExecutionResult: '工具执行结果:',
 
+      hitlTitle: '即将执行以下操作，请确认：',
+      hitlRiskHigh: '⛔ 高风险操作',
+      hitlRiskMedium: '⚠️ 中等风险操作',
+      hitlRiskLow: '提示',
+      hitlConfirm: '确认执行',
+      hitlCancel: '取消',
+      hitlTimeout: '秒后自动取消',
+      hitlParams: '操作参数',
+      hitlCanceled: '操作已取消',
+      hitlConfirmed: '操作已确认执行',
+
       welcomeTitle: 'HI，欢迎使用 Xiaomi Miloco',
       welcomeContent: 'follow me ，开启智能家庭生活',
       welcomeMessages: {

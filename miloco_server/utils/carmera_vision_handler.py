@@ -137,7 +137,7 @@ class CameraVisionHandler:
         await self.miot_camera_instance.unregister_raw_video_async(channel)
 
     async def add_camera_img(self, did: str, data: bytes, ts: int, channel: int):
-        logger.debug("add_camera_img camera_id: %s, camera timestamp: %d, image_size: %d", did, ts, len(data))
+        # logger.debug("add_camera_img camera_id: %s, camera timestamp: %d, image_size: %d", did, ts, len(data))
         self.camera_img_queues[channel].put(CameraImgInfo(data=data, timestamp=int(time.time())))
 
     async def update_camera_info(self, camera_info: MIoTCameraInfo) -> None:

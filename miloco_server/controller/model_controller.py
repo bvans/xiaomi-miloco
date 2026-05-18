@@ -192,5 +192,6 @@ async def get_cuda_info(current_user: str = Depends(verify_token)):
     - Requires admin permissions
     """
     logger.info("Get CUDA info API called - User: %s", current_user)
-    result = await manager.model_service.get_local_cuda_info()
-    return NormalResponse(code=0, message="Get CUDA info successfully", data=result)
+    # The user does not have CUDA locally, so we skip the query entirely
+    # result = await manager.model_service.get_local_cuda_info()
+    return NormalResponse(code=0, message="CUDA info query skipped", data=None)

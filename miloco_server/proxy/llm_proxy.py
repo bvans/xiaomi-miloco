@@ -3,9 +3,10 @@
 
 """LLM proxy module for handling large language model related operations."""
 
+import json
 import logging
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Any
 
 from openai import AsyncOpenAI, AsyncStream
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
@@ -46,6 +47,9 @@ class LLMProxy(ABC):
         """
         try:
             async for chunk in stream:
+                chunk_data = chunk.model_dump() if hasattr(chunk, 'model_dump') else str(chunk)
+                logger.debug("Stream Chunk Response:\n%s", 
+                            json.dumps(chunk_data, ensure_ascii=False) if isinstance(chunk_data, dict) else chunk_data)
                 yield {
                     "success": True,
                     "chunk": chunk,
@@ -73,6 +77,14 @@ class LLMProxy(ABC):
             "error": error_msg,
         }
 
+
+def _custom_json_encoder(obj: Any) -> Any:
+    """Helper to serialize complex objects like Pydantic models in logs."""
+    if hasattr(obj, 'model_dump'):
+        return obj.model_dump()
+    if hasattr(obj, '__dict__'):
+        return obj.__dict__
+    return str(obj)
 
 class OpenAIProxy(LLMProxy):
     """OpenAI compatible LLM proxy implementation."""
@@ -111,9 +123,10 @@ class OpenAIProxy(LLMProxy):
             Raw OpenAI format model response
         """
         try:
+            request_payload = {"model": self.model_name, "messages": messages, "tools": tools}
             logger.debug(
-                "Async calling model: %s, stream: False, messages: %s, tools: %s",
-                self.model_name, messages, tools
+                "Async calling model (stream=False) Request Body:\n%s",
+                json.dumps(request_payload, ensure_ascii=False, indent=2, default=_custom_json_encoder)
             )
             completion = await self.async_client.chat.completions.create(
                 model=self.model_name,
@@ -122,7 +135,9 @@ class OpenAIProxy(LLMProxy):
                 tools=tools,
                 temperature=0,
             )
-            logger.info("Async model call completed successfully")
+            response_data = completion.model_dump() if hasattr(completion, 'model_dump') else str(completion)
+            logger.info("Async model call completed successfully, Response Body:\n%s", 
+                        json.dumps(response_data, ensure_ascii=False, indent=2) if isinstance(response_data, dict) else response_data)
             return {
                 "success": True,
                 "response": completion,
@@ -149,9 +164,10 @@ class OpenAIProxy(LLMProxy):
             Async streaming iterator for model response
         """
         try:
+            request_payload = {"model": self.model_name, "messages": messages, "tools": tools}
             logger.debug(
-                "Async calling model: %s, stream: True, messages: %s, tools: %s",
-                self.model_name, messages, tools
+                "Async calling model (stream=True) Request Body:\n%s",
+                json.dumps(request_payload, ensure_ascii=False, indent=2, default=_custom_json_encoder)
             )
             completion: AsyncStream = await self.async_client.chat.completions.create(
                 model=self.model_name,

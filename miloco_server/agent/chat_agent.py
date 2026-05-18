@@ -2,8 +2,10 @@
 # This software may be used and distributed according to the terms of the Xiaomi Miloco License Agreement.
 
 """Chat Agent"""
+import asyncio
 import json
 import logging
+import uuid
 from typing import AsyncGenerator, Any, Optional
 
 from openai.types.chat import ChatCompletionChunk
@@ -17,13 +19,34 @@ from miloco_server.config import PromptConfig, CHAT_CONFIG
 from miloco_server.config.prompt_config import PromptType, UserLanguage
 from miloco_server.middleware.exceptions import LLMServiceException, ResourceNotFoundException
 from miloco_server.schema.chat_history_schema import ChatHistoryMessages
-from miloco_server.schema.chat_schema import Dialog, Event, InstructionPayload, Template
+from miloco_server.schema.chat_schema import Confirmation, Dialog, Event, InstructionPayload, Template
 from miloco_server.schema.mcp_schema import CallToolResult, LocalMcpClientId
 from miloco_server.utils.chat_companion import ChatCachedData
 from miloco_server.utils.local_models import ModelPurpose
 
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# HITL policy — tools / patterns that require user confirmation before running
+# ---------------------------------------------------------------------------
+_HITL_HIGH_RISK_TOOLS: set[str] = {
+    # Add specific tool names here that are unconditionally high-risk.
+    # Example: "miot_set_gas_valve", "miot_unlock_door"
+}
+
+_HITL_MEDIUM_RISK_KEYWORDS: list[str] = [
+    "delete", "remove", "reset", "clear",
+]
+
+# Any tool whose name contains a write-like suffix is medium risk by default.
+_HITL_WRITE_SUFFIXES: list[str] = [
+    "set_properties", "set_property", "action",
+]
+
+# Timeout (seconds) for waiting on user confirmation; default to deny on expiry.
+_HITL_TIMEOUT_SECONDS: int = 30
 
 
 class ChatAgent(Actor):
@@ -77,6 +100,12 @@ class ChatAgent(Actor):
             ChatCachedData(
                 out_actor_address=self._out_actor_address,
             ))
+
+        # HITL: pending confirmation state
+        # confirm_id -> asyncio.Event
+        self._pending_confirmations: dict[str, asyncio.Event] = {}
+        # confirm_id -> ActionConfirmResult
+        self._confirmation_results: dict[str, Confirmation.ActionConfirmResult] = {}
 
         logger.info("[%s] ChatAgent initialized", self._request_id)
 
@@ -147,6 +176,10 @@ class ChatAgent(Actor):
         """Handle event."""
         logger.info("[%s] handle_event: %s", self._request_id, event)
         try:
+            # HITL: intercept ActionConfirmResult before general parsing
+            if event.judge_type("Confirmation", "ActionConfirmResult"):
+                self._handle_action_confirm_result(event)
+                return
             self._parse_and_handle_event(event)
         except Exception as e:  # pylint: disable=broad-except
             logger.error("[%s] Unexpected error handling event: %s",
@@ -212,7 +245,7 @@ class ChatAgent(Actor):
     async def _run_finally_do(self, success: bool, error_message: str | None) -> None:
         """Run finally do."""
         if not success:
-            self._send_instruction(Dialog.Exception(message=error_message))
+            self._send_instruction(Dialog.Exception(message=error_message or "Unknown exception"))
         self._send_dialog_finish(success)
 
 
@@ -251,6 +284,86 @@ class ChatAgent(Actor):
                 ChatCompletionMessageToolCall] = self._merge_delta_tool_calls(
                     delta_tool_call_list)
 
+            # --- Parse <tool_call> tags or raw JSON array from finalized_content ---
+            import re
+            import uuid
+            
+            found_manual_tool_call = False
+            
+            # Helper to process parsed tool data
+            def _process_tool_data(tool_data):
+                calls_added = False
+                if isinstance(tool_data, dict):
+                    tool_data = [tool_data]
+                if isinstance(tool_data, list):
+                    for item in tool_data:
+                        if isinstance(item, dict) and "name" in item and "arguments" in item:
+                            arguments = item["arguments"]
+                            if not isinstance(arguments, str):
+                                arguments = json.dumps(arguments, ensure_ascii=False)
+                            new_call = ChatCompletionMessageToolCall(
+                                id=str(uuid.uuid4()),
+                                type="function",
+                                function={"name": item["name"], "arguments": arguments}  # type: ignore[arg-type]
+                            )
+                            finalized_tool_calls.append(new_call)
+                            calls_added = True
+                return calls_added
+
+            # 1. Try <tool_call> tags
+            matches = re.finditer(r'<tool_call>(.*?)</tool_call>', finalized_content, re.DOTALL)
+            for match in matches:
+                tool_json_str = match.group(1).strip()
+                try:
+                    tool_data = json.loads(tool_json_str)
+                    if _process_tool_data(tool_data):
+                        found_manual_tool_call = True
+                except Exception as e:
+                    logger.error("Failed to parse tool call JSON: %s, error: %s", tool_json_str, e)
+            
+            if found_manual_tool_call:
+                finalized_content = re.sub(r'<tool_call>.*?</tool_call>', '', finalized_content, flags=re.DOTALL).strip()
+            
+            # 2. Try Markdown JSON block
+            if not finalized_tool_calls:
+                json_match = re.search(r'```(?:json)?\s*(\[\s*\{.*?\}\s*\])\s*```', finalized_content, re.DOTALL)
+                if json_match:
+                    tool_json_str = json_match.group(1)
+                    try:
+                        tool_data = json.loads(tool_json_str)
+                        if _process_tool_data(tool_data):
+                            found_manual_tool_call = True
+                            finalized_content = finalized_content.replace(json_match.group(0), '').strip()
+                    except Exception as e:
+                        logger.error("Failed to parse markdown tool call JSON array: %s, error: %s", tool_json_str, e)
+
+            # 3. Try raw JSON array fallback (greedy match to handle nested objects)
+            if not finalized_tool_calls:
+                json_match = re.search(r'\[\s*\{.*\}\s*\]', finalized_content, re.DOTALL)
+                if json_match:
+                    tool_json_str = json_match.group(0)
+                    try:
+                        tool_data = json.loads(tool_json_str)
+                        if _process_tool_data(tool_data):
+                            found_manual_tool_call = True
+                            finalized_content = finalized_content.replace(tool_json_str, '').strip()
+                    except Exception as e:
+                        logger.error("Failed to parse raw tool call JSON array: %s, error: %s", tool_json_str, e)
+
+            # 4. Try single raw JSON object fallback (greedy match)
+            if not finalized_tool_calls:
+                json_match = re.search(r'\{\s*"name".*\}', finalized_content, re.DOTALL)
+                if json_match:
+                    tool_json_str = json_match.group(0)
+                    try:
+                        tool_data = json.loads(tool_json_str)
+                        if _process_tool_data(tool_data):
+                            found_manual_tool_call = True
+                            finalized_content = finalized_content.replace(tool_json_str, '').strip()
+                    except Exception as e:
+                        logger.error("Failed to parse single raw tool call JSON object: %s, error: %s", tool_json_str, e)
+            # -----------------------------------------------------
+
             logger.info(
                 "[%s] ChatAgent step %d finalized_content: %s, finalized_tool_calls: %s, finish_reason: %s",
                 self._request_id, step_number, finalized_content,
@@ -261,6 +374,8 @@ class ChatAgent(Actor):
 
             if self._has_tool_calls(finalized_tool_calls):
                 await self._execute_tools(finalized_tool_calls)
+                if finish_reason == "stop":
+                    finish_reason = "tool_calls"
 
             return finish_reason
 
@@ -400,6 +515,107 @@ class ChatAgent(Actor):
         for tool_call in tool_calls:
             await self._execute_single_tool(tool_call)
 
+    # ------------------------------------------------------------------
+    # HITL helpers
+    # ------------------------------------------------------------------
+
+    def _requires_confirmation(self, tool_name: str, parameters: dict) -> bool:
+        return True
+        """Return True if this tool call needs human approval before execution."""
+        if tool_name in _HITL_HIGH_RISK_TOOLS:
+            return True
+        lower = tool_name.lower()
+        if any(kw in lower for kw in _HITL_MEDIUM_RISK_KEYWORDS):
+            return True
+        if any(lower.endswith(suffix) for suffix in _HITL_WRITE_SUFFIXES):
+            return True
+        return False
+
+    def _get_risk_level(self, tool_name: str) -> str:
+        """Return 'high', 'medium', or 'low' for this tool."""
+        if tool_name in _HITL_HIGH_RISK_TOOLS:
+            return "high"
+        lower = tool_name.lower()
+        if any(kw in lower for kw in _HITL_MEDIUM_RISK_KEYWORDS):
+            return "medium"
+        if any(lower.endswith(suffix) for suffix in _HITL_WRITE_SUFFIXES):
+            return "medium"
+        return "low"
+
+    def _build_human_description(self, tool_name: str, parameters: dict) -> str:
+        """Build a user-friendly, one-line description of the tool call."""
+        try:
+            params_str = json.dumps(parameters, ensure_ascii=False)
+        except Exception:  # pylint: disable=broad-except
+            params_str = str(parameters)
+        return f"{tool_name}({params_str})"
+
+    async def _request_confirmation(
+            self, tool_name: str, parameters: dict
+    ) -> tuple[bool, dict | None]:
+        """Send an ActionConfirmRequest to the frontend and suspend until user responds.
+
+        Returns:
+            (confirmed, modified_params) — if confirmed is False the tool should be skipped.
+        """
+        confirm_id = str(uuid.uuid4())
+        wait_event = asyncio.Event()
+        self._pending_confirmations[confirm_id] = wait_event
+
+        self._send_instruction(
+            Confirmation.ActionConfirmRequest(
+                confirm_id=confirm_id,
+                risk_level=self._get_risk_level(tool_name),
+                tool_name=tool_name,
+                tool_params=parameters,
+                description=self._build_human_description(tool_name, parameters),
+                timeout_seconds=_HITL_TIMEOUT_SECONDS,
+            )
+        )
+        logger.info(
+            "[%s] HITL: waiting for user confirmation, confirm_id=%s, tool=%s",
+            self._request_id, confirm_id, tool_name,
+        )
+
+        try:
+            await asyncio.wait_for(wait_event.wait(), timeout=float(_HITL_TIMEOUT_SECONDS))
+        except asyncio.TimeoutError:
+            logger.warning(
+                "[%s] HITL: confirmation timed out for confirm_id=%s, denying by default",
+                self._request_id, confirm_id,
+            )
+            self._pending_confirmations.pop(confirm_id, None)
+            return False, None
+
+        self._pending_confirmations.pop(confirm_id, None)
+        result = self._confirmation_results.pop(confirm_id, None)
+        if result and result.confirmed:
+            return True, result.modified_params
+        return False, None
+
+    def _handle_action_confirm_result(self, event: Event) -> None:
+        """Wake up the coroutine waiting for this confirm_id."""
+        try:
+            result = Confirmation.ActionConfirmResult(**json.loads(event.payload))
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("[%s] HITL: failed to parse ActionConfirmResult: %s", self._request_id, e)
+            return
+
+        confirm_id = result.confirm_id
+        logger.info(
+            "[%s] HITL: received ActionConfirmResult confirm_id=%s confirmed=%s",
+            self._request_id, confirm_id, result.confirmed,
+        )
+
+        if confirm_id in self._pending_confirmations:
+            self._confirmation_results[confirm_id] = result
+            self._pending_confirmations[confirm_id].set()
+        else:
+            logger.warning(
+                "[%s] HITL: no pending confirmation for confirm_id=%s",
+                self._request_id, confirm_id,
+            )
+
     async def _execute_single_tool(
             self, tool_call: ChatCompletionMessageToolCall) -> None:
         """Execute single tool call."""
@@ -414,6 +630,22 @@ class ChatAgent(Actor):
             client_id, tool_name, parameters = self._tool_executor.parse_tool_call(
                 tool_call)
             service_name = self._tool_executor.get_server_name(client_id)
+
+            # HITL: check if this tool requires user confirmation
+            if self._requires_confirmation(tool_name, parameters):
+                confirmed, modified_params = await self._request_confirmation(
+                    tool_name, parameters)
+                if not confirmed:
+                    logger.info(
+                        "[%s] HITL: user rejected tool call %s, skipping",
+                        self._request_id, tool_name,
+                    )
+                    # Record rejection into chat history so the LLM knows
+                    self._chat_history_messages.add_tool_call_res_content(
+                        tool_id, tool_name, "用户拒绝了此操作")
+                    return
+                if modified_params:
+                    parameters = modified_params
 
             self._send_instruction(
                 Template.CallTool(id=tool_id,

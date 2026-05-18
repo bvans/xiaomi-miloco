@@ -60,3 +60,11 @@ export const getMessageIsSaveRuleConfirmResult = (type, namespace, name) => {
 export const getMessageIsAiGeneratedActions = (type, namespace, name) => {
   return getMessageIsInstruction(type) && namespace === MESSAGE_NAMESPACE.CONFIRMATION && name === MESSAGE_CONFIRMATION_NAME.AI_GENERATED_ACTIONS;
 };
+
+export const getMessageIsActionConfirmRequest = (type, namespace, name) => {
+  return getMessageIsInstruction(type) && namespace === MESSAGE_NAMESPACE.CONFIRMATION && name === MESSAGE_CONFIRMATION_NAME.ACTION_CONFIRM_REQUEST;
+};
+
+export const getMessageIsActionConfirmResult = (type, namespace, name) => {
+  return getMessageIsEvent(type) && namespace === MESSAGE_NAMESPACE.CONFIRMATION && name === MESSAGE_CONFIRMATION_NAME.ACTION_CONFIRM_RESULT;
+};

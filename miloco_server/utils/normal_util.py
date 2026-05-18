@@ -26,6 +26,34 @@ from miloco_server.config.normal_config import APP_CONFIG, SERVER_CONFIG, LOG_DI
 logger = logging.getLogger(name=__name__)
 
 
+class ColorFormatter(logging.Formatter):
+    """Custom formatter to add colors to log levels."""
+    
+    # ANSI escape sequences
+    GREY = "\x1b[38;20m"
+    YELLOW = "\x1b[33;20m"
+    RED = "\x1b[31;20m"
+    BOLD_RED = "\x1b[31;1m"
+    RESET = "\x1b[0m"
+    
+    def __init__(self, fmt, datefmt=None):
+        super().__init__()
+        self.fmt = fmt
+        self.datefmt = datefmt
+        self.FORMATS = {
+            logging.DEBUG: self.GREY + self.fmt + self.RESET,
+            logging.INFO: self.GREY + self.fmt + self.RESET,
+            logging.WARNING: self.YELLOW + self.fmt + self.RESET,
+            logging.ERROR: self.RED + self.fmt + self.RESET,
+            logging.CRITICAL: self.BOLD_RED + self.fmt + self.RESET
+        }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno, self.fmt)
+        formatter = logging.Formatter(log_fmt, datefmt=self.datefmt)
+        return formatter.format(record)
+
+
 def get_uvicorn_log_config(enable_file_logging: Optional[bool] = None,
                            enable_console_logging: Optional[bool] = None):
     """
@@ -47,7 +75,12 @@ def get_uvicorn_log_config(enable_file_logging: Optional[bool] = None,
     handler_list = []
 
     if console_logging:
-        handlers["console"] = {"class": "logging.StreamHandler", "formatter": "default", "level": log_level}
+        handlers["console"] = {
+            "class": "logging.StreamHandler", 
+            "formatter": "color", 
+            "level": log_level,
+            "stream": "ext://sys.stdout"
+        }
         handler_list.append("console")
 
     if file_logging:
@@ -75,6 +108,11 @@ def get_uvicorn_log_config(enable_file_logging: Optional[bool] = None,
         "formatters": {
             "default": {
                 "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S"
+            },
+            "color": {
+                "()": ColorFormatter,
+                "fmt": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
                 "datefmt": "%Y-%m-%d %H:%M:%S"
             }
         },

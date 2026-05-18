@@ -8,7 +8,7 @@ import { message } from 'antd';
 import { useChatStore, useSessionChatStore, useSocketStore } from '@/stores/chatStore';
 import { generateRequestId, createRequestMessage } from '@/utils/instruction';
 import { SOCKET_STATUS } from '@/constants/messageTypes';
-import { getMessageIsCameraImages, getMessageIsException, getMessageIsFinishChat, getMessageIsSaveRuleConfirm, getMessageIsSaveRuleConfirmResult, getMessageIsToastStream } from '@/utils/instruction/typeUtils';
+import { getMessageIsCameraImages, getMessageIsException, getMessageIsFinishChat, getMessageIsSaveRuleConfirm, getMessageIsSaveRuleConfirmResult, getMessageIsToastStream, getMessageIsActionConfirmRequest } from '@/utils/instruction/typeUtils';
 
 // global socket management hook
 export const useGlobalSocket = () => {
@@ -89,9 +89,15 @@ export const useGlobalSocket = () => {
   // global message processing logic
   const handleGlobalSocketMessage = useCallback((messageData) => {
     clearSocketWaitingTimer();
-    startSocketWaitingTimer();
     const { header, payload } = messageData;
     const { type, namespace, name } = header;
+
+    // During HITL, the user may take up to timeout_seconds to respond.
+    // Don't start the "waiting" timer for confirmation requests so the UI
+    // doesn't incorrectly show a loading indicator while the card is displayed.
+    if (!getMessageIsActionConfirmRequest(type, namespace, name)) {
+      startSocketWaitingTimer();
+    }
 
     try {
       if (getMessageIsToastStream(type, namespace, name)) {

@@ -163,6 +163,21 @@ class Confirmation:
     class AiGeneratedActions(InstructionPayload):
         actions: list[Action] = Field(..., description="AI generated actions")
 
+    class ActionConfirmRequest(InstructionPayload):
+        """Sent from server to client to request user confirmation before executing a tool call."""
+        confirm_id: str = Field(..., description="Unique ID to pair with the response")
+        risk_level: str = Field(..., description="Risk level: low | medium | high")
+        tool_name: str = Field(..., description="Name of the tool about to be called")
+        tool_params: dict = Field(default_factory=dict, description="Tool parameters (human-readable)")
+        description: str = Field(..., description="User-friendly description of the action")
+        timeout_seconds: int = Field(default=30, description="Seconds before auto-cancel on timeout")
+
+    class ActionConfirmResult(EventPayload):
+        """Sent from client to server with the user's confirmation decision."""
+        confirm_id: str = Field(..., description="Matches the confirm_id from ActionConfirmRequest")
+        confirmed: bool = Field(..., description="Whether user approved the action")
+        modified_params: Optional[dict] = Field(None, description="User-modified parameters (optional)")
+
 class Internal:
     """Internal event related classes"""
     class Dispatcher(InstructionPayload):

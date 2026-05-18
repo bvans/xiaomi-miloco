@@ -176,7 +176,7 @@ class TriggerRuleRunner:
                         if trigger_filter.pre_filter(rule)]
 
         if not enabled_rules:
-            logger.info("No enabled trigger rules to check")
+            # logger.info("No enabled trigger rules to check")
             return
 
         rule_info_list, condition_results, camera_motion_dict = await self._check_scheduled_task(llm_proxy, enabled_rules)

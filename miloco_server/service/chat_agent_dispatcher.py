@@ -100,6 +100,17 @@ class ChatAgentDispatcher(Actor):
 
         self._chat_history_storage.session.add_event(event)
 
+        # HITL: ActionConfirmResult must be forwarded to the active agent
+        # (which is suspended waiting for the user's decision), bypassing
+        # the next_event_handler mechanism.
+        if event.judge_type("Confirmation", "ActionConfirmResult"):
+            if self._chat_agent is not None:
+                logger.info("[%s] forwarding ActionConfirmResult to chat agent", self.request_id)
+                actor_system.tell(self._chat_agent, event)
+            else:
+                logger.warning("[%s] ActionConfirmResult received but no active chat agent", self.request_id)
+            return
+
         if self._next_event_handler is not None:
             self.send(self._next_event_handler, event)
             self._next_event_handler = None
@@ -127,6 +138,7 @@ class ChatAgentDispatcher(Actor):
                 "[%s] Unsupported event: %s.%s", self.request_id,
                 event.header.namespace, event.header.name
             )
+
 
     def _update_chat_history_info_title(self, query: str):
         if self._chat_history_storage.title == "":

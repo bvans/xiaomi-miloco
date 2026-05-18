@@ -40,8 +40,9 @@ export const MESSAGE_DIALOG_NAME = {
 export const MESSAGE_CONFIRMATION_NAME = {
   SAVE_RULE_CONFIRM: 'SaveRuleConfirm',
   SAVE_RULE_CONFIRM_RESULT: 'SaveRuleConfirmResult',
-  AI_GENERATED_ACTIONS: 'AiGeneratedActions'
-
+  AI_GENERATED_ACTIONS: 'AiGeneratedActions',
+  ACTION_CONFIRM_REQUEST: 'ActionConfirmRequest',
+  ACTION_CONFIRM_RESULT: 'ActionConfirmResult',
 };
 
 

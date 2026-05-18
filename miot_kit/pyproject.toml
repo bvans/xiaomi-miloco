@@ -33,3 +33,9 @@ include = ["miot*"]
 [tool.setuptools.package-data]
 miot_kit = ["libs/**/*.*", "specs/*", "i18n/**/*.*", "configs/*"]
 ha = []
+
+
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

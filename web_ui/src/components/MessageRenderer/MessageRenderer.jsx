@@ -12,7 +12,8 @@ import {
   FinishChatMessage,
   ExceptionMessage,
   RuleConfirmMessage,
-  AiGeneratedActionsMessage
+  AiGeneratedActionsMessage,
+  ActionConfirmMessage
 } from './index';
 import {
   getMessageIsCallTool,
@@ -23,7 +24,8 @@ import {
   getMessageIsFinishChat,
   getMessageIsSaveRuleConfirm,
   getMessageIsSaveRuleConfirmResult,
-  getMessageIsAiGeneratedActions
+  getMessageIsAiGeneratedActions,
+  getMessageIsActionConfirmRequest
 } from '@/utils/instruction/typeUtils';
 
 
@@ -74,6 +76,9 @@ const MessageRenderer = React.memo(({ messageData, allMessages = []}) => {
   }
   if(getMessageIsAiGeneratedActions(type, namespace, name)) {
     return <AiGeneratedActionsMessage data={parsedPayload} />;
+  }
+  if(getMessageIsActionConfirmRequest(type, namespace, name)) {
+    return <ActionConfirmMessage data={parsedPayload} mode="queryEdit" />;
   }
   // unknown message type
   return (

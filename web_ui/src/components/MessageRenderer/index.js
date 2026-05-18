@@ -12,6 +12,8 @@ export { default as ExceptionMessage } from './ExceptionMessage';
 export { default as FinalAnswerContent } from './FinalAnswerContent';
 export { default as RuleConfirmMessage } from './RuleConfirmMessage';
 export { default as AiGeneratedActionsMessage } from './AiGeneratedActionsMessage';
+export { default as ActionConfirmMessage } from './ActionConfirmMessage';
 export { default as MessageRenderer } from './MessageRenderer';
 export { default as LoadingIndicator } from './LoadingIndicator';
 export * from './utils';
+

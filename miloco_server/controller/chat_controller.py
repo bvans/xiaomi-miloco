@@ -41,8 +41,12 @@ async def ws_query(
     try:
         await websocket.accept()
         while True:
-
-            message = await websocket.receive_text()
+            try:
+                message = await websocket.receive_text()
+            except RuntimeError as e:
+                if 'WebSocket is not connected' in str(e) or 'Cannot call "receive" once a disconnect message has been received' in str(e):
+                    break
+                raise
             logger.info(
                 "[%s] Received message from client, %s", request_id, message)
             event_data = json.loads(message)
@@ -54,7 +58,12 @@ async def ws_query(
         logger.warning("[%s] Client disconnected", request_id)
     except Exception as err:  # pylint: disable=broad-exception-caught
         logger.error("[%s] WebSocket error: %s", request_id, err)
-        await websocket.close(code=1011, reason=f"Server error: {str(err)}")
+        try:
+            # Only try to close if not already closed
+            if websocket.client_state.value != 3:
+                await websocket.close(code=1011, reason=f"Server error: {str(err)}")
+        except RuntimeError:
+            pass # Ignore errors if the connection was already closed
     finally:
         logger.info("[%s] WebSocket connection closed", request_id)
         actor_system.tell(agent_transceiver, ActorExitRequest())

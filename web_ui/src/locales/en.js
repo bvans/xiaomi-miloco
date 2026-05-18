@@ -72,6 +72,18 @@ export default {
       toolExecutionParams: 'Tool execution parameters:',
       toolExecutionResult: 'Tool execution result:',
 
+      hitlTitle: 'The following action is about to run. Please confirm:',
+      hitlRiskHigh: '⛔ High-risk action',
+      hitlRiskMedium: '⚠️ Medium-risk action',
+      hitlRiskLow: 'Notice',
+      hitlConfirm: 'Confirm',
+      hitlCancel: 'Cancel',
+      hitlTimeout: 's before auto-cancel',
+      hitlParams: 'Parameters',
+      hitlCanceled: 'Action canceled',
+      hitlConfirmed: 'Action confirmed and executed',
+
+
       welcomeTitle: 'HI, Welcome to Xiaomi Miloco',
       welcomeContent: 'Follow me, start your smart home life',
       welcomeMessages: {
