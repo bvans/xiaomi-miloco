@@ -103,6 +103,7 @@ class MCPToolInfo(BaseModel):
 class LocalMcpClientId:
     """Local MCP client ID constants"""
     LOCAL_DEFAULT = "local_default"
+    ROBOT_DOG = "robot_dog"
     MIOT_MANUAL_SCENES = "miot_manual_scenes"
     MIOT_DEVICES = "miot_devices"
     HA_AUTOMATIONS = "ha_automations"

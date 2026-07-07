@@ -57,18 +57,6 @@ class SQLiteConnector:
                         self._create_kv_table(conn)
                         tables_created.append("kv")
 
-                    if "trigger_rule" not in existing_tables:
-                        logger.info(
-                            "Trigger rule table not found, creating...")
-                        self._create_trigger_rule_table(conn)
-                        tables_created.append("trigger_rule")
-
-                    if "trigger_rule_log" not in existing_tables:
-                        logger.info(
-                            "Trigger rule log table not found, creating...")
-                        self._create_trigger_rule_log_table(conn)
-                        tables_created.append("trigger_rule_log")
-
                     if "model_vendor" not in existing_tables:
                         logger.info(
                             "Model vendor table not found, creating...")
@@ -114,8 +102,6 @@ class SQLiteConnector:
     def _create_tables(self, conn: sqlite3.Connection) -> None:
         """Create database table structure"""
         self._create_kv_table(conn)
-        self._create_trigger_rule_table(conn)
-        self._create_trigger_rule_log_table(conn)
         self._create_model_vendor_table(conn)
         self._create_mcp_config_table(conn)
         self._create_chat_history_table(conn)
@@ -140,35 +126,6 @@ class SQLiteConnector:
         # Create index to improve query performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_kv_key ON kv(key)")
         logger.info("KV table created successfully")
-
-    def _create_trigger_rule_table(self, conn: sqlite3.Connection) -> None:
-        """Create trigger rule table"""
-        cursor = conn.cursor()
-
-        # Create trigger rule table for storing trigger rules
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS trigger_rule (
-                id TEXT PRIMARY KEY,  -- Use UUID as primary key, no longer auto-increment
-                name TEXT NOT NULL,
-                enabled BOOLEAN DEFAULT 1,
-                camera_dids TEXT NOT NULL,  -- JSON format storage for camera device ID list
-                condition TEXT NOT NULL,    -- Trigger condition
-                execute_info TEXT,          -- JSON format storage for ExecuteInfo object
-                filter TEXT,                 -- JSON format storage for TriggerFilter object
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        # Create indexes for trigger rule table to improve query performance
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_trigger_rule_name ON trigger_rule(name)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_trigger_rule_enabled ON trigger_rule(enabled)"
-        )
-
-        logger.info("Trigger rule table created successfully")
 
     def _create_model_vendor_table(self, conn: sqlite3.Connection) -> None:
         """Create model vendor table"""
@@ -258,36 +215,6 @@ class SQLiteConnector:
             "CREATE INDEX IF NOT EXISTS idx_chat_history_created_at ON chat_history(created_at)"
         )
         logger.info("Chat history table created successfully")
-
-    def _create_trigger_rule_log_table(self, conn: sqlite3.Connection) -> None:
-        """Create trigger rule log table"""
-        cursor = conn.cursor()
-
-        # Create trigger rule log table for storing trigger rule execution logs
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS trigger_rule_log (
-                id TEXT PRIMARY KEY,  -- Use UUID as primary key
-                timestamp INTEGER NOT NULL,  -- Trigger time (millisecond Unix timestamp)
-                trigger_rule_id TEXT NOT NULL,  -- Trigger rule ID
-                trigger_rule_name TEXT NOT NULL,  -- Trigger rule name
-                trigger_rule_condition TEXT NOT NULL,  -- Trigger rule condition
-                camera_condition_results TEXT NOT NULL,  -- JSON format storage for camera trigger condition result list
-                execute_result TEXT,  -- JSON format storage for ExecuteResult object
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        # Create indexes for trigger rule log table to improve query performance
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_trigger_rule_log_timestamp ON trigger_rule_log(timestamp)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_trigger_rule_log_rule_id ON trigger_rule_log(trigger_rule_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_trigger_rule_log_created_at ON trigger_rule_log(created_at)"
-        )
-        logger.info("Trigger rule log table created successfully")
 
     @contextmanager
     def get_connection(self):

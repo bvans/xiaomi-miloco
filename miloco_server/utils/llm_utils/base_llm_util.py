@@ -6,7 +6,7 @@ import logging
 from typing import Any, List, Optional
 
 from miloco_server.schema.chat_history_schema import ChatHistoryMessages
-from miloco_server.utils.local_models import ModelPurpose
+from miloco_server.schema.model_purpose import ModelPurpose
 from openai.types.chat import ChatCompletion, ChatCompletionToolParam
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
 

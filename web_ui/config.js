@@ -5,7 +5,7 @@
 
 export const config = {
   api: {
-    target: 'https://192.168.31.97:8000/',
+    target: 'http://localhost:8000/',
   },
   app: {
     name: 'Miloco',

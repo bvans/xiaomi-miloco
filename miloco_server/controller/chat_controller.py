@@ -32,7 +32,7 @@ async def ws_query(
     websocket: WebSocket,
     request_id: str,
     session_id: Optional[str] = None,
-    current_user: str = Depends(verify_websocket_token)):  # pylint: disable=unused-argument
+    current_user: str = Depends(verify_websocket_token), ):  # pylint: disable=unused-argument
     """Chat WebSocket."""
     logger.info("[%s] WebSocket connection request", request_id)
 

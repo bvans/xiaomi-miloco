@@ -4,65 +4,19 @@
  */
 
 import { useTranslation } from 'react-i18next';
-import { LoadingScreen, ErrorRetry, ConsentModal } from '@/components';
 import { useAuth, useLayout } from './hooks/index';
 import { Layout } from './components';
 
 /**
- * Home Page - Main application layout with authentication and navigation
- * 首页 - 包含身份验证和导航的主应用布局页面
+ * Home Page - Main application layout
+ * 首页 - 主应用布局页面
  *
- * @returns {JSX.Element} Home page component with layout or loading/error states
+ * @returns {JSX.Element} Home page component
  */
 const Home = () => {
   const { t } = useTranslation();
-  const {
-    userInfo,
-    loading,
-    needRetryAuth,
-    showConsentModal,
-    retryAuth,
-    logout,
-    handleConsentAgree,
-    handleConsentExit,
-    loginUrl,
-  } = useAuth(t)
-
-  const {
-    selectedMenuKey,
-  } = useLayout()
-
-  if (loading && !showConsentModal) {
-    return (
-      <LoadingScreen
-        title="common.loading"
-        size="default"
-        loginUrl={loginUrl}
-      />
-    )
-  }
-
-  if (needRetryAuth) {
-    return (
-      <ErrorRetry
-        title="error.authFailed"
-        message="error.authFailedMessage"
-        onRetry={retryAuth}
-        loading={loading}
-      />
-    )
-  }
-
-  if (showConsentModal) {
-    return (
-      <ConsentModal
-        visible={showConsentModal}
-        onAgree={handleConsentAgree}
-        onExit={handleConsentExit}
-        t={t}
-      />
-    )
-  }
+  const { userInfo, logout } = useAuth(t);
+  const { selectedMenuKey } = useLayout();
 
   return (
     <Layout
@@ -70,7 +24,7 @@ const Home = () => {
       userInfo={userInfo}
       onLogout={logout}
     />
-  )
-}
+  );
+};
 
-export default Home
+export default Home;

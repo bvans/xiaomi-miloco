@@ -22,7 +22,7 @@ from miloco_server.schema.chat_history_schema import ChatHistoryMessages
 from miloco_server.schema.chat_schema import Confirmation, Dialog, Event, InstructionPayload, Template
 from miloco_server.schema.mcp_schema import CallToolResult, LocalMcpClientId
 from miloco_server.utils.chat_companion import ChatCachedData
-from miloco_server.utils.local_models import ModelPurpose
+from miloco_server.schema.model_purpose import ModelPurpose
 
 
 logger = logging.getLogger(__name__)
@@ -32,18 +32,38 @@ logger = logging.getLogger(__name__)
 # HITL policy — tools / patterns that require user confirmation before running
 # ---------------------------------------------------------------------------
 _HITL_HIGH_RISK_TOOLS: set[str] = {
-    # Add specific tool names here that are unconditionally high-risk.
-    # Example: "miot_set_gas_valve", "miot_unlock_door"
+    # Robot dog motion / navigation — physical movement carries inherent safety risk.
+    "robot_go_to_poi",
+    "robot_follow_route",
+    "robot_motion_control",
 }
 
 _HITL_MEDIUM_RISK_KEYWORDS: list[str] = [
+    # Destructive / irreversible operations.
     "delete", "remove", "reset", "clear",
+    # State-changing write operations.
+    "create", "update", "modify",
+    # Robot dog: inspection involves navigation, speech outputs to physical speaker.
+    "inspect",
 ]
 
-# Any tool whose name contains a write-like suffix is medium risk by default.
+# Any tool whose name ends with one of these suffixes is medium risk by default.
 _HITL_WRITE_SUFFIXES: list[str] = [
-    "set_properties", "set_property", "action",
+    "set_properties", "set_property",
+    "action",
+    "_control",     # motion_control, device_control, etc.
+    "say",          # speech output
 ]
+
+好: set[str] = {
+    "robot_status",
+    "robot_list_pois",
+    "robot_list_routes",
+    "robot_get_pose",
+    "robot_get_gps",
+    "robot_capture_image",
+    "robot_vision_understand",
+}
 
 # Timeout (seconds) for waiting on user confirmation; default to deny on expiry.
 _HITL_TIMEOUT_SECONDS: int = 30
@@ -82,8 +102,7 @@ class ChatAgent(Actor):
         self._chat_companion = self._manager.chat_companion
         self._llm_proxy = self._manager.get_llm_proxy_by_purpose(
             ModelPurpose.PLANNING)
-        self._language = self._manager.auth_service.get_user_language(
-        ).language
+        self._language = self._manager.auth_service.get_user_language().language
         logger.info("[%s] LLM proxy: %s",self._request_id, self._llm_proxy)
         self._tool_executor = self._manager.tool_executor
         self._local_default_mcp_tools_meta = []
@@ -124,6 +143,8 @@ class ChatAgent(Actor):
         """
         if mcp_list is None:
             mcp_list = []
+        if LocalMcpClientId.ROBOT_DOG not in mcp_list:
+            mcp_list = [LocalMcpClientId.ROBOT_DOG] + list(mcp_list)
 
         self._local_default_mcp_tools_meta = self._tool_executor.get_mcp_chat_completion_tools(
             mcp_client_ids=[LocalMcpClientId.LOCAL_DEFAULT],
@@ -287,9 +308,9 @@ class ChatAgent(Actor):
             # --- Parse <tool_call> tags or raw JSON array from finalized_content ---
             import re
             import uuid
-            
+
             found_manual_tool_call = False
-            
+
             # Helper to process parsed tool data
             def _process_tool_data(tool_data):
                 calls_added = False
@@ -320,10 +341,10 @@ class ChatAgent(Actor):
                         found_manual_tool_call = True
                 except Exception as e:
                     logger.error("Failed to parse tool call JSON: %s, error: %s", tool_json_str, e)
-            
+
             if found_manual_tool_call:
                 finalized_content = re.sub(r'<tool_call>.*?</tool_call>', '', finalized_content, flags=re.DOTALL).strip()
-            
+
             # 2. Try Markdown JSON block
             if not finalized_tool_calls:
                 json_match = re.search(r'```(?:json)?\s*(\[\s*\{.*?\}\s*\])\s*```', finalized_content, re.DOTALL)
@@ -520,8 +541,9 @@ class ChatAgent(Actor):
     # ------------------------------------------------------------------
 
     def _requires_confirmation(self, tool_name: str, parameters: dict) -> bool:
-        return True
         """Return True if this tool call needs human approval before execution."""
+        if tool_name in _HITL_NO_CONFIRM_TOOLS:
+            return False
         if tool_name in _HITL_HIGH_RISK_TOOLS:
             return True
         lower = tool_name.lower()

@@ -9,13 +9,11 @@ Provides functionality to clean up chat history, trigger rule logs and image fil
 import asyncio
 import logging
 
-from miloco_server.config.normal_config import CHAT_CONFIG, TRIGGER_RULE_RUNNER_CONFIG
+from miloco_server.config.normal_config import CHAT_CONFIG
 from miloco_server.dao.chat_history_dao import ChatHistoryDAO
-from miloco_server.dao.trigger_rule_log_dao import TriggerRuleLogDAO
 from miloco_server.schema.chat_history_schema import ChatHistorySession
 from miloco_server.schema.chat_schema import Instruction, Template
 from miloco_server.schema.miot_schema import CameraImgPathSeq
-from miloco_server.schema.trigger_log_schema import TriggerRuleLog
 from miloco_server.utils.media import image_manager
 
 logger = logging.getLogger(__name__)
@@ -24,12 +22,9 @@ logger = logging.getLogger(__name__)
 class Cleaner:
     """Cleaner for managing data cleanup tasks"""
 
-    def __init__(self, chat_history_dao: ChatHistoryDAO,
-                 trigger_rule_log_dao: TriggerRuleLogDAO):
+    def __init__(self, chat_history_dao: ChatHistoryDAO):
         self._chat_history_dao = chat_history_dao
-        self._trigger_rule_log_dao = trigger_rule_log_dao
         self._chat_history_ttl = CHAT_CONFIG["chat_history_ttl"]
-        self._trigger_rule_log_ttl = TRIGGER_RULE_RUNNER_CONFIG["trigger_rule_log_ttl"]
 
         # Start scheduled cleanup task
         asyncio.create_task(self._cleanup_loop())
@@ -40,7 +35,6 @@ class Cleaner:
         while True:
             try:
                 await self._clean_chat_history(self._chat_history_ttl)
-                await self._clean_trigger_rule_log(self._trigger_rule_log_ttl)
                 # Wait 24 hours
                 await asyncio.sleep(24 * 60 * 60)
             except Exception as e:  # pylint: disable=broad-exception-caught
@@ -80,51 +74,6 @@ class Cleaner:
                 instruction.payload)
             await self._clean_image_path_seq_list(
                 payload.image_path_seq_list)
-
-
-    async def _clean_trigger_rule_log(self, days: int):
-        """
-        Clean up trigger rule logs
-        """
-        try:
-            logs: list[TriggerRuleLog] = self._trigger_rule_log_dao.get_logs_before_days(days)
-            await self._clean_trigger_rule_log_condition_images(logs)
-            await self._clean_trigger_rule_log_execute_result_images(logs)
-            log_ids = [log.id for log in logs if log.id is not None]
-            self._trigger_rule_log_dao.delete_by_ids(log_ids)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("Error cleaning trigger rule log: %s",
-                         e, exc_info=True)
-
-    async def _clean_trigger_rule_log_condition_images(self, logs: list[TriggerRuleLog]):
-        """
-        Clean up trigger rule log condition images
-        """
-        if not logs:
-            return
-
-        tasks = []
-        for log in logs:
-            for camera_condition_result in log.condition_results:
-                if camera_condition_result.images:
-                    tasks.append(
-                        image_manager.delete_image_list_async([
-                            image.data
-                            for image in camera_condition_result.images
-                        ]))
-        await asyncio.gather(*tasks)
-
-    async def _clean_trigger_rule_log_execute_result_images(self, logs: list[TriggerRuleLog]):
-        """
-        Clean up trigger rule log execute result
-        """
-        if not logs:
-            return
-        for log in logs:
-            if log.execute_result and log.execute_result.ai_recommend_dynamic_execute_result:
-                execute_result = log.execute_result.ai_recommend_dynamic_execute_result
-                await self._clean_chat_history_session(execute_result.chat_history_session)
-
 
     async def _clean_image_path_seq_list(
             self, image_path_seq_list: list[CameraImgPathSeq]):

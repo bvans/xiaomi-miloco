@@ -69,41 +69,13 @@ export const MENU_ITEMS = [
   },
   {
     key: '3',
-    label: 'home.menu.triggerRule',
-    icon: 'menuSmart',
-    selectedIcon: 'menuSmartSelected',
-    path: '/home/smartCenter',
-  },
-  {
-    key: '4',
-    label: 'home.menu.executionManage',
-    icon: 'menuExecution',
-    selectedIcon: 'menuExecutionSelected',
-    path: '/home/executionManage',
-  },
-  {
-    key: '5',
     label: 'home.menu.mcpService',
     icon: 'menuMcp',
     selectedIcon: 'menuMcpSelected',
     path: '/home/mcpService',
   },
   {
-    key: '6',
-    label: 'home.menu.deviceManage',
-    icon: 'menuDevice',
-    selectedIcon: 'menuDeviceSelected',
-    path: '/home/deviceManage',
-  },
-  {
-    key: '7',
-    label: 'home.menu.logManage',
-    icon: 'menuLog',
-    selectedIcon: 'menuLogSelected',
-    path: '/home/logManage',
-  },
-  {
-    key: '8',
+    key: '4',
     label: 'home.menu.setting',
     icon: 'menuSetting',
     selectedIcon: 'menuSettingSelected',
@@ -115,4 +87,3 @@ export const MENU_ITEMS = [
  * default selected menu item
  */
 export const DEFAULT_SELECTED_MENU_KEY = '1';
-

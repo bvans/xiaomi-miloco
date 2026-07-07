@@ -16,7 +16,6 @@ from thespian.actors import Actor, ActorAddress, ActorExitRequest
 
 from miloco_server import actor_system
 from miloco_server.agent.nlp_request_agent import NlpRequestAgent
-from miloco_server.agent.dynamic_execute_agent import ActionDescriptionDynamicExecuteAgent
 from miloco_server.schema.chat_schema import Event, Instruction, InstructionPayload, Internal
 from miloco_server.schema.chat_history_schema import (
     ChatHistoryStorage, ChatHistoryMessages, ChatHistorySession
@@ -125,14 +124,6 @@ class ChatAgentDispatcher(Actor):
             logger.info("[%s] send event to nlp request agent", self.request_id)
             actor_system.tell(self._chat_agent, event)
 
-        elif event.judge_type("Nlp", "ActionDescriptionDynamicExecute"):
-            logger.info("[%s] create nlp action description dynamic execute agent", self.request_id)
-            self._chat_agent = actor_system.createActor(lambda: ActionDescriptionDynamicExecuteAgent(
-                self.request_id, self.myAddress, self._chat_history_messages,
-            ))
-
-            logger.info("[%s] send event to nlp action descriptions dynamic execute agent", self.request_id)
-            actor_system.tell(self._chat_agent, event)
         else:
             logger.warning(
                 "[%s] Unsupported event: %s.%s", self.request_id,

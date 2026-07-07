@@ -39,7 +39,6 @@ def _get_storage_dir() -> Path:
 STORAGE_DIR = _get_storage_dir()
 
 IMAGE_DIR = STORAGE_DIR / "images"
-MIOT_CACHE_DIR = STORAGE_DIR / "miot_cache"
 CERT_DIR = STORAGE_DIR / "cert"
 LOG_DIR = STORAGE_DIR / "log"
 
@@ -58,6 +57,7 @@ SERVER_CONFIG = {
     "log_level": os.getenv("BACKEND_LOG_LEVEL", None) or _config["server"]["log_level"],
     "enable_console_logging": _config["server"]["enable_console_logging"],
     "enable_file_logging": _config["server"]["enable_file_logging"],
+    "ssl_enabled": os.getenv("BACKEND_SSL", "false").lower() in ("1", "true", "yes", "on"),
     "ssl_certfile": CERT_DIR / "cert.pem",
     "ssl_keyfile": CERT_DIR / "key.pem",
 }
@@ -70,17 +70,26 @@ APP_CONFIG = {
     "version": _config["app"]["version"]
 }
 
+ROBOT_CONFIG = {
+    "name": os.getenv("ROBOT_NAME", None) or _config.get("robot", {}).get("name", "robot-dog"),
+    "home_poi": os.getenv("ROBOT_HOME_POI", None) or _config.get("robot", {}).get("home_poi", "charging_dock"),
+    "low_battery_threshold": int(
+        os.getenv("ROBOT_LOW_BATTERY_THRESHOLD", None)
+        or _config.get("robot", {}).get("low_battery_threshold", 20)
+    ),
+}
+
+OPENAI_COMPATIBLE_CONFIG = {
+    "base_url": os.getenv("OPENAI_BASE_URL", ""),
+    "api_key": os.getenv("OPENAI_API_KEY", ""),
+    "model": os.getenv("OPENAI_MODEL", "qwen3.7-plus"),
+}
+
 # JWT authentication configuration
 JWT_CONFIG = {
     "secret_key": os.getenv("SECRET_KEY", _config["jwt"]["secret_key"]),
     "algorithm": _config["jwt"]["algorithm"],
     "access_token_expire_minutes": _config["jwt"]["access_token_expire_minutes"],
-}
-
-# Local model configuration
-LOCAL_MODEL_CONFIG = {
-    "host": os.getenv("AI_ENGINE_HOST", None) or _config["local_model"]["host"],
-    "port": int(os.getenv("AI_ENGINE_PORT", None) or _config["local_model"]["port"])
 }
 
 # Chat configuration
@@ -90,24 +99,8 @@ CHAT_CONFIG = {
     "chat_history_ttl": _config["chat"]["chat_history_ttl"],
 }
 
-# Trigger rule runner configuration
-TRIGGER_RULE_RUNNER_CONFIG = {
-    "interval_seconds": _config["trigger_rule_runner"]["interval_seconds"],
-    "vision_use_img_count": _config["trigger_rule_runner"]["vision_use_img_count"],
-    "trigger_rule_log_ttl": _config["trigger_rule_runner"]["trigger_rule_log_ttl"],
-    "request_timeout_seconds": _config["trigger_rule_runner"]["request_timeout_seconds"],
-}
-
 # Camera configuration
 CAMERA_CONFIG = {
     "frame_interval": _config["camera"]["frame_interval"],
-    "camera_img_cache_max_size": max(
-        TRIGGER_RULE_RUNNER_CONFIG["vision_use_img_count"],
-        CHAT_CONFIG["vision_use_img_count"]
-    ),
-}
-
-# MIoT dynamic configuration
-MIOT_CONFIG = {
-    "cloud_server": _config["miot"]["cloud_server"],
+    "camera_img_cache_max_size": CHAT_CONFIG["vision_use_img_count"],
 }

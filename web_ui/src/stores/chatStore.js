@@ -5,7 +5,7 @@
 
 import { create } from 'zustand'
 import { persist, subscribeWithSelector } from 'zustand/middleware'
-import { getMCPStatus, getCameraList, refreshMiotCamera, getHistoryList, getHistoryDetail, reconnectMCPService, deleteChatHistory } from '@/api'
+import { getMCPStatus, getHistoryList, getHistoryDetail, reconnectMCPService, deleteChatHistory } from '@/api'
 import { message } from 'antd'
 import { processHistorySocketMessages } from '@/utils/instruction'
 
@@ -186,7 +186,7 @@ export const useChatStore = create(
             set({ mcpLoading: true });
             const response = await getMCPStatus();
             if (response && response.code === 0) {
-              const services = response?.data?.clients || [];
+              const services = response?.data?.clients || response?.data || [];
               set({ availableMcpServices: Array.isArray(services) ? services : [] });
             } else {
               set({ availableMcpServices: [] });
@@ -212,42 +212,12 @@ export const useChatStore = create(
 
         // === Actions - camera management ===
         fetchCameraList: async () => {
-          try {
-            const response = await getCameraList();
-            const { code, data } = response || {};
-            const list = data || [];
-
-            if (code === 0) {
-              const { setCameraList } = get();
-              setCameraList(list);
-            } else {
-              set({ cameraList: [] });
-              message.error('fetch camera list failed');
-            }
-          } catch (error) {
-            set({ cameraList: [] });
-            message.error('fetch camera list failed');
-          }
+          set({ cameraList: [] });
         },
 
         refreshMiotInfo: async () => {
-          try {
-            set({ isRefreshing: true });
-            const response = await refreshMiotCamera();
-            const { code } = response || {};
-
-            if (code === 0) {
-              const state = get();
-              await state.fetchCameraList();
-              message.success('refresh device info success');
-            } else {
-              message.error('refresh device list failed');
-            }
-          } catch (error) {
-            message.error('refresh device list failed');
-          } finally {
-            set({ isRefreshing: false });
-          }
+          set({ isRefreshing: true });
+          set({ cameraList: [], isRefreshing: false });
         },
 
         // === Actions - history record get ===

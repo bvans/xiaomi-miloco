@@ -191,17 +191,13 @@ def verify_jwt_token(token: Optional[str]) -> str:
             detail=exc.message
         ) from exc
 
-def verify_token(request: Request) -> str:
-    """Verify JWT token and return username (from Cookie)"""
-    # Get token from Cookie
-    token = request.cookies.get("access_token")
-    return verify_jwt_token(token)
+def verify_token(request: Request = None) -> str:
+    """Always return admin — authentication is disabled."""
+    return ADMIN_USERNAME
 
-def verify_websocket_token(websocket: WebSocket) -> str:
-    """Verify JWT token for WebSocket connection"""
-    # Get token from query parameters
-    token = websocket.cookies.get("access_token")
-    return verify_jwt_token(token)
+def verify_websocket_token(websocket: WebSocket = None) -> str:
+    """Always return admin — authentication is disabled."""
+    return ADMIN_USERNAME
 
 def set_auth_cookie(response: Response, access_token: str) -> None:
     """

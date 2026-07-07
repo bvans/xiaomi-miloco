@@ -9,7 +9,6 @@ Define chat-related data structures including events and instructions
 import time
 from typing import List, Optional
 from miloco_server.schema.miot_schema import CameraImgPathSeq, CameraInfo
-from miloco_server.schema.trigger_schema import Action, TriggerRule, TriggerRuleDetail
 from pydantic import BaseModel, Field, ConfigDict
 from thespian.actors import ActorAddress
 
@@ -57,6 +56,16 @@ class EventPayload(ChatSpec):
 class InstructionPayload(ChatSpec):
     """Base class for instruction payloads"""
     pass
+
+
+class Action(BaseModel):
+    """Tool action data model."""
+
+    mcp_client_id: str = Field(..., description="MCP client ID")
+    mcp_tool_name: str = Field(..., description="MCP tool name")
+    mcp_tool_input: dict = Field(..., description="MCP tool input")
+    mcp_server_name: str = Field(..., description="MCP service name")
+    introduction: str = Field(..., description="Human-readable action introduction")
 
 class Event(BaseModel):
     """Event model"""
@@ -150,16 +159,6 @@ class Dialog:
 
 class Confirmation:
     """Confirmation related classes"""
-    class SaveRuleConfirm(InstructionPayload):
-        rule: TriggerRuleDetail = Field(..., description="Trigger rule details")
-        camera_options: List[CameraInfo] = Field(..., description="Camera option list")
-        action_options: List[Action] = Field(..., description="Action option list")
-
-
-    class SaveRuleConfirmResult(EventPayload):
-        confirmed: bool = Field(..., description="Whether user confirmed")
-        rule: Optional[TriggerRule] = Field(None, description="Trigger rule details")
-
     class AiGeneratedActions(InstructionPayload):
         actions: list[Action] = Field(..., description="AI generated actions")
 

@@ -36,14 +36,8 @@ instace.interceptors.response.use(
     if(err?.response?.data?.message) {
       message.error(err?.response?.data?.message)
     }
-    const origin = window.location && window.location.origin ? window.location.origin : '';
-    if (err?.response?.status === 401) {
-      const { pathname } = window.location
-      if (pathname !== "/login") {
-        window.location.href = `${origin}/login`;
-      }
-    }
     if (err?.response?.status === 500) {
+      const origin = window.location && window.location.origin ? window.location.origin : '';
       window.location.href = `${origin}/500`;
     }
 

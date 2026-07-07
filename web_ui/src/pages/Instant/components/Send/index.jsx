@@ -3,13 +3,12 @@
  * This software may be used and distributed according to the terms of the Xiaomi Miloco License Agreement.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Button, Flex, message, Modal, Tooltip } from 'antd';
+import React, { useEffect, useCallback } from 'react';
+import { Flex, message } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Sender } from '@ant-design/x';
-import { Icon, RuleForm } from '@/components';
+import { Icon } from '@/components';
 import { classNames } from '@/utils/util';
-import { useRuleFormUpdates } from '@/hooks/useRuleFormUpdates';
 import { useChatStore } from '@/stores/chatStore';
 import { useGlobalSocket } from '@/hooks/useGlobalSocket';
 import { SelectedItemsPrefix, BottomControlButtons } from './components';
@@ -41,9 +40,6 @@ const Send = ({
     setCurrentAnswer,
     globalSendMessage
   } = useChatStore();
-
-  // const [createModalVisible, setCreateModalVisible] = useState(false);
-  // const { loading, handleSaveRule } = useRuleFormUpdates();
 
   const socketActions = useGlobalSocket();
 
@@ -148,24 +144,6 @@ const Send = ({
           actions={false}
         />
       </div>
-
-      {/* <Modal
-        title={t('smartCenter.createRule')}
-        open={createModalVisible}
-        onCancel={() => setCreateModalVisible(false)}
-        footer={null}
-        destroyOnClose
-        centered
-      >
-        <RuleForm
-          mode="create"
-          onSubmit={async (formData) => {
-            await handleSaveRule(formData);
-            setCreateModalVisible(false);
-          }}
-          loading={loading}
-        />
-      </Modal> */}
     </>
   );
 }

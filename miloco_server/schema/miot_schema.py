@@ -6,13 +6,14 @@ MIoT schema module
 Define MIoT device related data structures
 """
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
 from miloco_server.utils.media import image_manager
 from miloco_server.utils.normal_util import bytes_to_base64
-from miot.types import MIoTCameraInfo
+
+MIoTCameraInfo = Any
 
 class DeviceInfo(BaseModel):
     did: str = Field(..., description="Device ID")

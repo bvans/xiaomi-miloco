@@ -20,11 +20,8 @@ from miloco_server.config import APP_CONFIG, IMAGE_DIR, SERVER_CONFIG, STATIC_DI
 from miloco_server.controller import (
     auth_router,
     chat_router,
-    ha_router,
     mcp_router,
-    miot_router,
     model_router,
-    trigger_router,
     web_router,
 )
 from miloco_server.middleware.auth_middleware import AuthStaticFiles
@@ -55,10 +52,7 @@ app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="as
 app.mount("/static/camera/images", AuthStaticFiles(directory=str(IMAGE_DIR)), name="images")
 app.include_router(web_router)
 app.include_router(auth_router, prefix="/api")
-app.include_router(miot_router, prefix="/api")
-app.include_router(ha_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
-app.include_router(trigger_router, prefix="/api")
 app.include_router(model_router, prefix="/api")
 app.include_router(mcp_router, prefix="/api")
 
@@ -109,7 +103,8 @@ def _open_browser():
     """Delayed browser opening"""
     time.sleep(2)
     port = SERVER_CONFIG["port"]
-    url = f"https://127.0.0.1:{port}"
+    scheme = "https" if SERVER_CONFIG["ssl_enabled"] else "http"
+    url = f"{scheme}://127.0.0.1:{port}"
     webbrowser.open(url)
 
 
@@ -126,14 +121,17 @@ def start_server():
     logger.info("Starting Miloco server...")
 
     log_config = get_uvicorn_log_config()
-    update_localhost_cert(cert_path=SERVER_CONFIG["ssl_certfile"], key_path=SERVER_CONFIG["ssl_keyfile"])
+    server_args = {
+        "host": SERVER_CONFIG["host"],
+        "port": SERVER_CONFIG["port"],
+        "log_level": SERVER_CONFIG["log_level"],
+        "log_config": log_config,
+    }
+    if SERVER_CONFIG["ssl_enabled"]:
+        update_localhost_cert(cert_path=SERVER_CONFIG["ssl_certfile"], key_path=SERVER_CONFIG["ssl_keyfile"])
+        server_args.update({
+            "ssl_certfile": SERVER_CONFIG["ssl_certfile"],
+            "ssl_keyfile": SERVER_CONFIG["ssl_keyfile"],
+        })
 
-    uvicorn.run(
-        app,
-        host=SERVER_CONFIG["host"],
-        port=SERVER_CONFIG["port"],
-        log_level=SERVER_CONFIG["log_level"],
-        log_config=log_config,
-        ssl_certfile=SERVER_CONFIG["ssl_certfile"],
-        ssl_keyfile=SERVER_CONFIG["ssl_keyfile"]
-    )
+    uvicorn.run(app, **server_args)

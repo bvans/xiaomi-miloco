@@ -10,10 +10,10 @@ import json
 import logging
 from typing import Optional
 
-from miloco_server.utils.local_models import LOCAL_MODEL_ID_PREFIX
 from miloco_server.dao.kv_dao import KVDao, SystemConfigKeys
 from miloco_server.dao.third_party_model_dao import ThirdPartyModelDAO
-from miloco_server.utils.local_models import LocalModels, ModelPurpose
+from miloco_server.schema.model_purpose import ModelPurpose
+from miloco_server.config import OPENAI_COMPATIBLE_CONFIG
 from miloco_server.proxy.llm_proxy import LLMProxy, OpenAIProxy
 from miloco_server.schema.model_schema import (
     ThirdPartyModelCreate, ThirdPartyModelInfo, LLMModelInfo, ModelsList
@@ -26,6 +26,8 @@ from miloco_server.middleware.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+ENV_MODEL_ID = "env-openai-compatible"
+
 
 class ModelService:
     """Model management service class"""
@@ -35,7 +37,6 @@ class ModelService:
         self._third_party_model_dao = third_party_model_dao
         self._model_id_by_purpose = {}
         self._llm_proxy_by_purpose = {}
-        self._local_models = LocalModels()
 
         try:
             asyncio.create_task(self._refresh_llm_proxy())
@@ -47,6 +48,26 @@ class ModelService:
 
         self._model_id_by_purpose = {}
         self._llm_proxy_by_purpose = {}
+        env_model = self._get_env_model()
+        if env_model:
+            self._model_id_by_purpose = {
+                ModelPurpose.PLANNING.value: ENV_MODEL_ID,
+                ModelPurpose.VISION_UNDERSTANDING.value: ENV_MODEL_ID,
+            }
+            self._llm_proxy_by_purpose = {
+                ModelPurpose.PLANNING: OpenAIProxy(
+                    base_url=env_model.base_url,
+                    api_key=env_model.api_key,
+                    model_name=env_model.model_name),
+                ModelPurpose.VISION_UNDERSTANDING: OpenAIProxy(
+                    base_url=env_model.base_url,
+                    api_key=env_model.api_key,
+                    model_name=env_model.model_name),
+            }
+            return self._llm_proxy_by_purpose
+
+        logger.warning("OPENAI_BASE_URL or OPENAI_API_KEY is not configured; LLM proxy is unavailable")
+
         # Get current model ID configuration
         model_purpose_str = self._kv_dao.get(SystemConfigKeys.CURRENT_MODEL_ID_KEY)
         if not model_purpose_str:
@@ -69,13 +90,7 @@ class ModelService:
                 pop_keys.append(purpose_type)
                 continue
 
-            model = None
-            if model_id.startswith(LOCAL_MODEL_ID_PREFIX):
-                logger.info("Using local model for %s", purpose)
-                model = await self._local_models.get_local_model_from_id(model_id)
-                model = model if model and model.loaded else None
-            else:
-                model = self._third_party_model_dao.get_by_id(model_id)
+            model = self._third_party_model_dao.get_by_id(model_id)
 
             if model:
                 llm_proxy_by_purpose[purpose] = model
@@ -107,6 +122,20 @@ class ModelService:
     def get_llm_proxy(self) -> dict[ModelPurpose, LLMProxy]:
         return self._llm_proxy_by_purpose
 
+    def _get_env_model(self) -> Optional[LLMModelInfo]:
+        """Build the environment-configured OpenAI-compatible model entry."""
+        if not OPENAI_COMPATIBLE_CONFIG["base_url"] or not OPENAI_COMPATIBLE_CONFIG["api_key"]:
+            return None
+        return LLMModelInfo(
+            id=ENV_MODEL_ID,
+            model_name=OPENAI_COMPATIBLE_CONFIG["model"],
+            base_url=OPENAI_COMPATIBLE_CONFIG["base_url"],
+            api_key=OPENAI_COMPATIBLE_CONFIG["api_key"],
+            local=False,
+            loaded=True,
+            estimate_vram_usage=-1.0,
+        )
+
     async def set_current_model(self, model_id: Optional[str], purpose: ModelPurpose):
         """
         Set currently used model
@@ -121,13 +150,14 @@ class ModelService:
         """
         logger.info("Setting current model: model_id=%s", model_id)
 
+        if model_id == ENV_MODEL_ID:
+            await self._refresh_llm_proxy()
+            logger.info("Environment model is fixed as current model")
+            return
+
         model = None
         if model_id:
-            if not model_id.startswith(LOCAL_MODEL_ID_PREFIX):
-                # Check if model exists
-                model = self._third_party_model_dao.get_by_id(model_id)
-            else:
-                model = await self._local_models.get_local_model_from_id(model_id)
+            model = self._third_party_model_dao.get_by_id(model_id)
 
         # Save current model ID to configuration
         model_id_by_purpose = self._model_id_by_purpose.copy()
@@ -184,10 +214,10 @@ class ModelService:
         models_response = [
             LLMModelInfo.from_third_party(model) for model in models
         ]
-        cached_local_models = await self._local_models.get_local_models()
-        if cached_local_models:
-            models_response.extend(cached_local_models)
         await self._refresh_llm_proxy()
+        env_model = self._get_env_model()
+        if env_model:
+            models_response.insert(0, env_model)
         return ModelsList(models=models_response,
                           current_model=self._model_id_by_purpose)
 
@@ -211,9 +241,6 @@ class ModelService:
 
         if model_id in self._model_id_by_purpose.values():
             raise ConflictException("Current model is in use, cannot delete")
-
-        if model_id.startswith(LOCAL_MODEL_ID_PREFIX):
-            raise ConflictException("Local models cannot be deleted")
 
         if not self._third_party_model_dao.exists(model_id):
             raise ResourceNotFoundException("Third-party model does not exist")
@@ -251,21 +278,3 @@ class ModelService:
         except Exception as e:
             logger.error("Failed to get vendor models: %s", str(e))
             raise BusinessException(f"Failed to get vendor models: {str(e)}") from e
-
-    async def load_or_unload_local_model(self, model_name: str, loaded: bool):
-        """load or unload local model"""
-
-        used_models = [llm_proxy.model_name for _,
-                       llm_proxy in self._llm_proxy_by_purpose.items()]
-
-        if model_name in used_models and not loaded:
-            logger.error("Model %s is currently in use, cannot unload", model_name)
-            raise ConflictException(f"Model {model_name}is currently in use, cannot unload")
-
-        await self._local_models.toggle_model(model_name, loaded)
-
-    async def get_local_cuda_info(self):
-        """Get local CUDA info"""
-
-        result = await self._local_models.local_cuda_info()
-        return result

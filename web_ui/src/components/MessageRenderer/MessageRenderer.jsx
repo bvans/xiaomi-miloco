@@ -11,7 +11,6 @@ import {
   CameraImagesMessage,
   FinishChatMessage,
   ExceptionMessage,
-  RuleConfirmMessage,
   AiGeneratedActionsMessage,
   ActionConfirmMessage
 } from './index';
@@ -22,8 +21,6 @@ import {
   getMessageIsCameraImages,
   getMessageIsException,
   getMessageIsFinishChat,
-  getMessageIsSaveRuleConfirm,
-  getMessageIsSaveRuleConfirmResult,
   getMessageIsAiGeneratedActions,
   getMessageIsActionConfirmRequest
 } from '@/utils/instruction/typeUtils';
@@ -67,12 +64,6 @@ const MessageRenderer = React.memo(({ messageData, allMessages = []}) => {
   }
   if(getMessageIsFinishChat(type, namespace, name)) {
     return <FinishChatMessage data={parsedPayload} />;
-  }
-  if(getMessageIsSaveRuleConfirm(type, namespace, name)) {
-    return <RuleConfirmMessage data={parsedPayload} mode="queryEdit" />;
-  }
-  if(getMessageIsSaveRuleConfirmResult(type, namespace, name)) {
-    return <RuleConfirmMessage data={parsedPayload} mode="readonly" />;
   }
   if(getMessageIsAiGeneratedActions(type, namespace, name)) {
     return <AiGeneratedActionsMessage data={parsedPayload} />;

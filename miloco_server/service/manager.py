@@ -11,29 +11,21 @@ from typing import Callable, Optional
 
 
 from miloco_server.dao.chat_history_dao import ChatHistoryDAO
-from miloco_server.dao.trigger_rule_log_dao import TriggerRuleLogDAO
 from miloco_server.schema.auth_schema import UserLanguage
-from miloco_server.utils.local_models import ModelPurpose
-from miloco_server.utils.default_action import DefaultPresetActionManager
+from miloco_server.schema.model_purpose import ModelPurpose
 from miloco_server.mcp.tool_executor import ToolExecutor
 from miloco_server.utils.cleaner import Cleaner
 from miloco_server.dao.kv_dao import KVDao, SystemConfigKeys
-from miloco_server.dao.trigger_dao import TriggerRuleDAO
 from miloco_server.dao.third_party_model_dao import ThirdPartyModelDAO
 from miloco_server.dao.mcp_config_dao import MCPConfigDAO
 from miloco_server.proxy.llm_proxy import LLMProxy
-from miloco_server.proxy.miot_proxy import MiotProxy
-from miloco_server.proxy.ha_proxy import HAProxy
-from miloco_server.service.trigger_rule_runner import TriggerRuleRunner
 from miloco_server.mcp.mcp_client_manager import MCPClientManager
 from miloco_server.service.auth_service import AuthService
-from miloco_server.service.miot_service import MiotService
-from miloco_server.service.ha_service import HaService
-from miloco_server.service.trigger_rule_service import TriggerRuleService
 from miloco_server.service.model_service import ModelService
 from miloco_server.service.mcp_service import McpService
 from miloco_server.service.chat_history_service import ChatHistoryService
-from miloco_server.config.normal_config import MIOT_CONFIG
+from miloco_server.proxy.robot_proxy import RobotProxy
+from miloco_server.service.robot_service import RobotService
 from miloco_server.utils.chat_companion import ChatCompanion
 
 logger = logging.getLogger(__name__)
@@ -69,64 +61,30 @@ class Manager:
 
         # Initialize DAO layer
         self._kv_dao = KVDao()
-        self._trigger_rule_dao = TriggerRuleDAO()
         self._third_party_model_dao = ThirdPartyModelDAO()
         self._mcp_config_dao = MCPConfigDAO()
         self._chat_history_dao = ChatHistoryDAO()
-        self._trigger_rule_log_dao = TriggerRuleLogDAO()
-        self._cleaner = Cleaner(self._chat_history_dao, self._trigger_rule_log_dao)
+        self._cleaner = Cleaner(self._chat_history_dao)
         self._chat_companion = ChatCompanion(self._chat_history_dao)
 
         # Initialize device UUID
         self.init_device_uuid()
 
-        # Initialize proxy layer
-        self._miot_proxy = await MiotProxy.create_miot_proxy(
-            uuid=self.device_uuid,
-            redirect_uri="https://mico.api.mijia.tech/login_redirect",
-            kv_dao=self._kv_dao,
-            cloud_server=MIOT_CONFIG["cloud_server"])
-
-        self._ha_proxy = HAProxy(kv_dao=self._kv_dao)
-
-        # LLM proxy initialization moved to ModelService.__init__ for automatic execution
-
-        # Initialize MCP client manager
-        self._mcp_client_manager = await MCPClientManager.create(self._mcp_config_dao, self._miot_proxy, self._ha_proxy)
+        # Initialize model service before robot service so robot vision can use configured LLM proxies.
+        self._model_service = ModelService(self._kv_dao, self._third_party_model_dao)
+        self._robot_proxy = RobotProxy()
+        self._robot_service = RobotService(self._robot_proxy, self.get_llm_proxy_by_purpose)
+        self._mcp_client_manager = await MCPClientManager.create(
+            self._mcp_config_dao,
+            robot_service=self._robot_service)
 
         # Initialize tool executor
         self._tool_executor = ToolExecutor(self._mcp_client_manager)
 
-        # Initialize default preset action manager
-        self._default_preset_action_manager = DefaultPresetActionManager(self._tool_executor)
-
-        # Initialize trigger
-        self._trigger_rule_runner = TriggerRuleRunner(
-            trigger_rules=self._trigger_rule_dao.get_all(enabled_only=False),
-            miot_proxy=self._miot_proxy,
-            get_llm_proxy_by_purpose=self.get_llm_proxy_by_purpose,
-            get_language=self.get_language,
-            tool_executor=self._tool_executor,
-            trigger_rule_log_dao=self._trigger_rule_log_dao,
-        )
-
         # Initialize all services
         self._auth_service = AuthService(self._kv_dao)
-        self._miot_service = MiotService(
-            self._miot_proxy, self._mcp_client_manager, self._default_preset_action_manager)
-        self._ha_service = HaService(self._ha_proxy, self._mcp_client_manager, self._default_preset_action_manager)
-        self._model_service = ModelService(self._kv_dao, self._third_party_model_dao)
         self._mcp_service = McpService(self._mcp_config_dao, self._mcp_client_manager)
         self._chat_service = ChatHistoryService(self._chat_history_dao, self._chat_companion)
-        self._trigger_rule_service = TriggerRuleService(
-            self._trigger_rule_dao,
-            self._trigger_rule_log_dao,
-            self._trigger_rule_runner,
-            self._miot_proxy,
-            self._mcp_client_manager
-        )
-
-        self._trigger_rule_runner.start_periodic_task()
 
         if callback:
             callback()
@@ -146,18 +104,6 @@ class Manager:
         return self._auth_service
 
     @property
-    def miot_service(self) -> MiotService:
-        return self._miot_service
-
-    @property
-    def ha_service(self) -> HaService:
-        return self._ha_service
-
-    @property
-    def trigger_rule_service(self) -> TriggerRuleService:
-        return self._trigger_rule_service
-
-    @property
     def model_service(self) -> ModelService:
         return self._model_service
 
@@ -173,14 +119,14 @@ class Manager:
     def chat_companion(self) -> ChatCompanion:
         return self._chat_companion
 
+    @property
+    def robot_service(self) -> RobotService:
+        return self._robot_service
+
     # Tool and proxy access properties
     @property
     def tool_executor(self) -> ToolExecutor:
         return self._tool_executor
-
-    @property
-    def default_preset_action_manager(self) -> DefaultPresetActionManager:
-        return self._default_preset_action_manager
 
     def get_llm_proxy_by_purpose(self, purpose: ModelPurpose) -> LLMProxy:
         llm_proxy_by_purpose = self._model_service.get_llm_proxy()
@@ -198,10 +144,6 @@ class Manager:
         return self._kv_dao
 
     @property
-    def trigger_rule_dao(self) -> TriggerRuleDAO:
-        return self._trigger_rule_dao
-
-    @property
     def third_party_model_dao(self) -> ThirdPartyModelDAO:
         return self._third_party_model_dao
 
@@ -214,21 +156,8 @@ class Manager:
         return self._chat_history_dao
 
     @property
-    def trigger_rule_log_dao(self) -> TriggerRuleLogDAO:
-        return self._trigger_rule_log_dao
-
-    @property
     def cleaner(self) -> Cleaner:
         return self._cleaner
-
-    # Proxy layer access properties
-    @property
-    def miot_proxy(self) -> MiotProxy:
-        return self._miot_proxy
-
-    @property
-    def ha_proxy(self) -> HAProxy:
-        return self._ha_proxy
 
 # Global singleton instance
 manager_instance = None
